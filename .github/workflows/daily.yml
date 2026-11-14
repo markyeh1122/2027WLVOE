@@ -151,8 +151,16 @@ jobs:
         continue-on-error: true
         with:
           pattern: run-*
-          path: site/runs
+          path: new-runs
           merge-multiple: true
+
+      - name: 以新產生的報取代網站上同一報 (不留舊檔)
+        run: |
+          mkdir -p site/runs new-runs
+          for d in new-runs/*/; do
+            [ -d "$d" ] || continue
+            r=$(basename "$d"); rm -rf "site/runs/$r"; mv "$d" "site/runs/$r"; echo "更新 $r"
+          done
 
       - name: 套用保留規則並重建網頁
         run: |

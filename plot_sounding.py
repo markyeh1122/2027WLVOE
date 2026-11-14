@@ -32,13 +32,12 @@ DATADIR = os.path.join(HERE, "data", DATE)
 OUTDIR = os.path.join(HERE, "figures", DATE, "sounding")
 os.makedirs(OUTDIR, exist_ok=True)
 
-# id, 中文名, 圖上標示, lat, lon
-SITES = [
-    ("banqiao",  "新北氣象站 (46692)",   "STATION = 46692",       24.998, 121.442),
-    ("pengjia",  "彭佳嶼氣象站 (46695)", "STATION = 46695",       25.628, 122.080),
-    ("ishigaki", "石垣島氣象站 (47918)", "STATION = 47918",       24.337, 124.164),
-    ("p_se",     "21.5°N, 123.25°E",     "POINT = 21.5N 123.25E", 21.5,   123.25),
-    ("p_sw",     "21.5°N, 118.5°E",      "POINT = 21.5N 118.5E",  21.5,   118.5),
+SITES = [  # (代號, 選單名稱, 圖上標籤 / 文字檔名, 緯度, 經度)
+    ("banqiao", "新北氣象站 (46692)",        "STATION = 46692", 24.96, 121.53),
+    ("pengjia", "彭佳嶼氣象站 (46695)",      "STATION = 46695", 25.628, 122.080),
+    ("ishigaki", "石垣島氣象站 (47918)",     "STATION = 47918", 24.337, 124.164),
+    ("setw",    "SETW (21.5°N, 123.25°E)",  "POINT = SETW",    21.5,   123.25),
+    ("swtw",    "SWTW (21.5°N, 118.5°E)",   "POINT = SWTW",    21.5,   118.5),
 ]
 
 # 仿 CWA 配色
