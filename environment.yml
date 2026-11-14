@@ -1,0 +1,16 @@
+name: forecast
+channels: [conda-forge]
+dependencies:
+  - python=3.11
+  - numpy
+  - scipy
+  - xarray
+  - cfgrib
+  - eccodes
+  - cartopy
+  - matplotlib
+  - metpy=1.7
+  - pillow
+  - pip
+  - pip:
+      - ecmwf-opendata

@@ -1,0 +1,89 @@
+name: Daily forecast
+
+on:
+  schedule:
+    - cron: "0 9 * * *"        # 每天 UTC 09:00 (台北 17:00)
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "初始日期 YYYYMMDD (00Z)，空白 = 今天"
+        required: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: forecast-site
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    defaults:
+      run:
+        shell: bash -el {0}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 決定初始日期
+        run: |
+          D="${{ github.event.inputs.date }}"
+          [ -z "$D" ] && D=$(date -u +%Y%m%d)
+          echo "DATE=$D" >> "$GITHUB_ENV"
+          echo "初始時間: ${D} 00Z"
+
+      - name: 等待 ECMWF 資料上線 (最多 3 小時)
+        run: |
+          URL="https://storage.googleapis.com/ecmwf-open-data/${DATE}/00z/ifs/0p1/oper/${DATE}000000-120h-oper-fc-pl.index"
+          for i in $(seq 1 36); do
+            if curl -sfI "$URL" > /dev/null; then echo "資料已上線"; exit 0; fi
+            echo "第 $i 次檢查：尚未上線，5 分鐘後再試"; sleep 300
+          done
+          echo "等了 3 小時資料仍未上線"; exit 1
+
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-file: environment.yml
+          cache-environment: true
+
+      - name: 安裝字型
+        run: sudo apt-get install -y -q fonts-liberation && rm -rf ~/.cache/matplotlib
+
+      - name: 海岸線資料快取
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/cartopy
+          key: cartopy-naturalearth-v1
+
+      - name: 下載預報資料
+        run: |
+          python download_ecmwf.py "$DATE"
+          python download_sounding.py "$DATE"
+
+      - name: 繪製天氣圖與探空
+        run: |
+          python plot_ecmwf.py "$DATE"
+          python plot_sounding.py "$DATE"
+
+      - name: 逐 run 比較
+        run: python compare_runs.py "$DATE"
+
+      - name: 取出目前的網站內容
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: site
+
+      - name: 加入新一報並套用保留規則
+        run: python build_site.py "$DATE" && du -sh site/runs/*
+
+      - name: 發佈到 gh-pages (只保留最新一份，不留歷史)
+        working-directory: site
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan publish
+          git add -A
+          git commit -q -m "Forecast site ${DATE}00"
+          git push -f origin publish:gh-pages
