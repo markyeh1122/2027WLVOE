@@ -13,7 +13,7 @@
 
 保留規則 (以網站上最新一報為基準，可用環境變數調整)：
   KEEP_FULL=14  最近 14 天保留完整內容
-  KEEP_LITE=30  之後 30 天只留比較圖、探空圖與文字檔 (刪掉動畫圖)，再舊的整報刪除
+  KEEP_LITE=30  之後 30 天只留比較圖 (含初始場)、探空圖與文字檔 (刪掉其餘動畫圖)，再舊的整報刪除
   (GitHub Actions 上設為 KEEP_FULL=7、KEEP_LITE=365，見 .github/workflows/daily.yml)
   --run-only    只轉圖不重建網頁 (GitHub Actions 平行產圖用)
 """
@@ -127,8 +127,10 @@ def prune():
                 m = json.load(fh)
             if m.get("lite"):
                 continue
-            for key in PRODUCTS:
-                shutil.rmtree(os.path.join(rundir, "img", key), ignore_errors=True)
+            for key in PRODUCTS:  # 刪掉動畫圖，但保留初始場 f000 給逐 run 比較的「分析場」
+                for f in glob.glob(os.path.join(rundir, "img", key, "*.webp")):
+                    if os.path.basename(f) != "f000.webp":
+                        os.remove(f)
             m.update(lite=True, steps=[])
             with open(mf, "w", encoding="utf-8") as fh:
                 json.dump(m, fh, ensure_ascii=False)
