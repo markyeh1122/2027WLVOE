@@ -14,6 +14,8 @@
 保留規則 (以網站上最新一報為基準，可用環境變數調整)：
   KEEP_FULL=14  最近 14 天保留完整內容
   KEEP_LITE=30  之後 30 天只留比較圖、探空圖與文字檔 (刪掉動畫圖)，再舊的整報刪除
+  (GitHub Actions 上設為 KEEP_FULL=7、KEEP_LITE=365，見 .github/workflows/daily.yml)
+  --run-only    只轉圖不重建網頁 (GitHub Actions 平行產圖用)
 """
 import datetime as dt
 import glob
@@ -24,7 +26,6 @@ import shutil
 import sys
 import zipfile
 
-from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SITE = os.path.join(HERE, "site")
@@ -38,6 +39,7 @@ KEEP_LITE = int(os.environ.get("KEEP_LITE", 30))
 
 
 def to_webp(src, dst, q=88):
+    from PIL import Image
     Image.open(src).convert("RGB").save(dst, quality=q, method=6)
 
 
@@ -156,5 +158,7 @@ def build_html():
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         add_run(sys.argv[1])
+        if "--run-only" in sys.argv:
+            sys.exit()
     prune()
     build_html()

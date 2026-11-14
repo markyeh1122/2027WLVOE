@@ -5,33 +5,74 @@ on:
     - cron: "0 9 * * *"        # 每天 UTC 09:00 (台北 17:00)
   workflow_dispatch:
     inputs:
-      date:
-        description: "初始日期 YYYYMMDD (00Z)，空白 = 今天"
+      dates:
+        description: "初始日期 (00Z)：空白 = 今天；單日 20261101；區間 20261101-20261111；或用逗號分隔"
         required: false
 
 permissions:
-  contents: write
+  contents: write    # 推送 gh-pages、建立 Releases
+  actions: write     # 防止排程因 60 天無活動被停用
+
+env:
+  END_DATE: "20270114"   # 實驗結束日：之後排程不再執行
+  KEEP_FULL: "7"         # 最近 7 天保留完整內容
+  KEEP_LITE: "365"       # 更早的一律保留精簡版 (比較圖 + 探空)
+  GH_TOKEN: ${{ github.token }}
 
 concurrency:
   group: forecast-site
   cancel-in-progress: false
 
 jobs:
-  build:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      dates: ${{ steps.d.outputs.dates }}
+      go: ${{ steps.d.outputs.go }}
+    steps:
+      - id: d
+        name: 決定要處理的日期
+        run: |
+          IN="${{ github.event.inputs.dates }}"
+          TODAY=$(date -u +%Y%m%d)
+          if [ -z "$IN" ]; then
+            LIST="$TODAY"
+          elif [[ "$IN" == *-* ]]; then
+            A=${IN%-*}; B=${IN#*-}; LIST=""
+            d=$A; while [ "$d" -le "$B" ]; do LIST="$LIST $d"; d=$(date -u -d "$d +1 day" +%Y%m%d); done
+          else
+            LIST=$(echo "$IN" | tr ',' ' ')
+          fi
+          GO=true
+          if [ "${{ github.event_name }}" = "schedule" ] && [ "$TODAY" -gt "$END_DATE" ]; then
+            GO=false; echo "實驗已於 $END_DATE 結束，不再自動執行"
+          fi
+          JSON=$(printf '%s\n' $LIST | jq -R . | jq -cs .)
+          echo "dates=$JSON" >> "$GITHUB_OUTPUT"
+          echo "go=$GO" >> "$GITHUB_OUTPUT"
+          echo "日期: $JSON  執行: $GO"
+
+      - name: 防止排程被停用 (60 天無活動)
+        if: github.event_name == 'schedule' && steps.d.outputs.go == 'true'
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/daily.yml/enable"
+
+  make:
+    needs: plan
+    if: needs.plan.outputs.go == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        date: ${{ fromJSON(needs.plan.outputs.dates) }}
     defaults:
       run:
         shell: bash -el {0}
+    env:
+      DATE: ${{ matrix.date }}
     steps:
       - uses: actions/checkout@v5
-
-      - name: 決定初始日期
-        run: |
-          D="${{ github.event.inputs.date }}"
-          [ -z "$D" ] && D=$(date -u +%Y%m%d)
-          echo "DATE=$D" >> "$GITHUB_ENV"
-          echo "初始時間: ${D} 00Z"
 
       - name: 等待 ECMWF 資料上線 (最多 3 小時)
         run: |
@@ -70,14 +111,54 @@ jobs:
       - name: 逐 run 比較
         run: python compare_runs.py "$DATE"
 
+      - name: 轉成網站格式
+        run: python build_site.py "$DATE" --run-only
+
+      - name: 完整封存到 Releases (永久保存，不佔網站容量)
+        run: |
+          RUN="${DATE}00"; TAG="run-${RUN}"; Z="ECMWF_IFS_${RUN}_full.zip"
+          (cd site/runs && zip -qr "../../$Z" "$RUN")
+          ls -lh "$Z"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" "$Z" --clobber
+          else
+            gh release create "$TAG" "$Z" --title "ECMWF IFS 0.1° ${RUN:0:4}-${RUN:4:2}-${RUN:6:2} 00Z" \
+              --notes "完整封存：動畫 (風羽、流線)、逐 run 比較、探空圖與 .edt.txt。解壓後的資料夾可放回網站的 runs/ 底下。" \
+              --target main
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: run-${{ matrix.date }}
+          path: site/runs/
+          retention-days: 3
+
+  publish:
+    needs: [plan, make]
+    if: always() && needs.plan.outputs.go == 'true'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
       - name: 取出目前的網站內容
         uses: actions/checkout@v5
         with:
           ref: gh-pages
           path: site
 
-      - name: 加入新一報並套用保留規則
-        run: python build_site.py "$DATE" && du -sh site/runs/*
+      - name: 收集這次產生的各報
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: run-*
+          path: site/runs
+          merge-multiple: true
+
+      - name: 套用保留規則並重建網頁
+        run: |
+          python3 build_site.py
+          du -sh site/runs/* | tail -20
+          echo "網站總大小: $(du -sh --exclude=.git site | cut -f1)"
 
       - name: 發佈到 gh-pages (只保留最新一份，不留歷史)
         working-directory: site
@@ -86,5 +167,9 @@ jobs:
           git config user.email "41898299+github-actions[bot]@users.noreply.github.com"
           git checkout --orphan publish
           git add -A
-          git commit -q -m "Forecast site ${DATE}00"
+          git commit -q -m "Forecast site $(date -u +%Y-%m-%dT%H:%MZ)"
           git push -f origin publish:gh-pages
+
+      - name: 有報失敗時讓整個流程標示為失敗 (會寄通知信)
+        if: needs.make.result != 'success'
+        run: echo "部分日期產圖失敗，請到 Actions 查看" && false
