@@ -18,13 +18,13 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 240
     defaults:
       run:
         shell: bash -el {0}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: 決定初始日期
         run: |
@@ -36,11 +36,12 @@ jobs:
       - name: 等待 ECMWF 資料上線 (最多 3 小時)
         run: |
           URL="https://storage.googleapis.com/ecmwf-open-data/${DATE}/00z/ifs/0p1/oper/${DATE}000000-120h-oper-fc-pl.index"
+          ok=0
           for i in $(seq 1 36); do
-            if curl -sfI "$URL" > /dev/null; then echo "資料已上線"; exit 0; fi
+            if curl -sfI "$URL" > /dev/null; then ok=1; break; fi
             echo "第 $i 次檢查：尚未上線，5 分鐘後再試"; sleep 300
           done
-          echo "等了 3 小時資料仍未上線"; exit 1
+          if [ "$ok" = 1 ]; then echo "資料已上線"; else echo "等了 3 小時資料仍未上線"; false; fi
 
       - uses: mamba-org/setup-micromamba@v2
         with:
@@ -70,7 +71,7 @@ jobs:
         run: python compare_runs.py "$DATE"
 
       - name: 取出目前的網站內容
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: gh-pages
           path: site
