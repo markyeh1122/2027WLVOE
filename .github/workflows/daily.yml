@@ -1,8 +1,12 @@
 name: Daily forecast
 
 on:
+  # GitHub 排程在整點尖峰常延遲或被略過，所以避開整點並設三個時段；
+  # 當天的報已經在網站上時，後面的時段會自動略過。
   schedule:
-    - cron: "0 9 * * *"        # 每天 UTC 09:00 (台北 17:00)
+    - cron: "23 9 * * *"       # 台北 17:23
+    - cron: "47 10 * * *"      # 台北 18:47 (備援)
+    - cron: "13 12 * * *"      # 台北 20:13 (備援，在本機 21:00 下載之前)
   workflow_dispatch:
     inputs:
       dates:
@@ -44,8 +48,12 @@ jobs:
             LIST=$(echo "$IN" | tr ',' ' ')
           fi
           GO=true
-          if [ "${{ github.event_name }}" = "schedule" ] && [ "$TODAY" -gt "$END_DATE" ]; then
-            GO=false; echo "實驗已於 $END_DATE 結束，不再自動執行"
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            if [ "$TODAY" -gt "$END_DATE" ]; then
+              GO=false; echo "實驗已於 $END_DATE 結束，不再自動執行"
+            elif gh api "repos/${{ github.repository }}/contents/runs/${TODAY}00/manifest.json?ref=gh-pages" > /dev/null 2>&1; then
+              GO=false; echo "${TODAY}00 已在網站上，這個備援時段略過"
+            fi
           fi
           JSON=$(printf '%s\n' $LIST | jq -R . | jq -cs .)
           echo "dates=$JSON" >> "$GITHUB_OUTPUT"
