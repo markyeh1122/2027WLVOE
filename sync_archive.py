@@ -1,7 +1,9 @@
 """把 GitHub Releases 上的完整封存下載到本機 archive/ (每天由 launchd 自動執行)。
 
 每次執行都會比對 Releases 清單與本機資料夾，把還沒下載的報全部補齊，
-所以筆電幾天沒開也不會漏。只用 Python 標準函式庫，不需要登入 GitHub。
+所以筆電幾天沒開也不會漏。
+若今天的報還沒產生 (GitHub 排程沒觸發)，會用本機已登入的 gh 啟動 GitHub 流程。
+下載只用 Python 標準函式庫，不需要登入。
 
 用法: python3 sync_archive.py
 輸出: ~/2027WLVOE_archive/{YYYYMMDDHH}/ (桌面 2027WLVOE/archive 是它的捷徑)
@@ -12,6 +14,7 @@ import datetime as dt
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import urllib.request
@@ -64,6 +67,26 @@ def safe_extract(zpath, run):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+END_DATE = "20270114"   # 實驗結束日
+GH = "/usr/local/bin/gh"
+
+
+def trigger_if_missing(rels):
+    """備援：GitHub 排程沒觸發時，若今天 (UTC) 的報還沒產生，就從本機啟動 GitHub 流程。"""
+    now = dt.datetime.now(dt.timezone.utc)
+    today = now.strftime("%Y%m%d")
+    if now.hour < 10 or today > END_DATE or not os.path.exists(GH):
+        return
+    if any(r["tag_name"] == f"run-{today}00" for r in rels):
+        return
+    r = subprocess.run([GH, "workflow", "run", "daily.yml", "-R", REPO],
+                       capture_output=True, text=True, timeout=60)
+    if r.returncode == 0:
+        log(f"{today}00 尚未產生，已從本機啟動 GitHub 流程 (約 15 分鐘後完成，23:30 會再下載)")
+    else:
+        log(f"{today}00 尚未產生，但無法啟動 GitHub 流程：{(r.stderr or r.stdout).strip()}")
+
+
 def main():
     os.makedirs(ARCHIVE, exist_ok=True)
     try:
@@ -95,6 +118,10 @@ def main():
         finally:
             if os.path.exists(zpath):
                 os.remove(zpath)
+    try:
+        trigger_if_missing(rels)
+    except Exception as e:
+        log(f"檢查/啟動 GitHub 流程失敗：{e}")
     log(f"完成：新增 {new} 報，本機共 {sum(1 for d in os.listdir(ARCHIVE) if d.isdigit())} 報")
     return 0
 

@@ -8,9 +8,12 @@
     <string>/usr/bin/python3</string>
     <string>/Users/chih-chun/Library/Application Support/2027WLVOE/sync_archive.py</string>
   </array>
-  <!-- 每天 21:00 (本機時間)；錯過時 (闔上/關機) 在下次喚醒時補跑 -->
+  <!-- 每天 21:00 與 23:30 (本機時間)；錯過時 (闔上/關機) 在下次喚醒時補跑 -->
   <key>StartCalendarInterval</key>
-  <dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>
+  <array>
+    <dict><key>Hour</key><integer>21</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>23</integer><key>Minute</key><integer>30</integer></dict>
+  </array>
   <!-- 登入時也跑一次，補齊關機期間漏掉的報 -->
   <key>RunAtLoad</key><true/>
   <key>StandardOutPath</key><string>/tmp/wlvoe-archive-sync.out</string>
