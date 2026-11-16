@@ -1,10 +1,10 @@
 name: Daily forecast
 
 on:
-  # GitHub 排程常延遲數小時甚至略過，所以改成每小時檢查一次 (幾秒就結束)：
-  # 只要網站缺報且 ECMWF 資料已上線，就自動補齊從最後一報到今天的所有日期。
+  # 台北 17:00–24:00 每個整點檢查 (UTC 09–16)：網站缺報且 ECMWF 資料已上線就執行，
+  # 自動補齊從最後一報到今天的所有日期；沒有缺報時幾秒就結束。
   schedule:
-    - cron: "23 * * * *"
+    - cron: "0 9-16 * * *"
   workflow_dispatch:
     inputs:
       dates:
