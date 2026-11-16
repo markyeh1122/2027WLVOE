@@ -1,16 +1,14 @@
 name: Daily forecast
 
 on:
-  # GitHub 排程在整點尖峰常延遲或被略過，所以避開整點並設三個時段；
-  # 當天的報已經在網站上時，後面的時段會自動略過。
+  # GitHub 排程常延遲數小時甚至略過，所以改成每小時檢查一次 (幾秒就結束)：
+  # 只要網站缺報且 ECMWF 資料已上線，就自動補齊從最後一報到今天的所有日期。
   schedule:
-    - cron: "23 9 * * *"       # 台北 17:23
-    - cron: "47 10 * * *"      # 台北 18:47 (備援)
-    - cron: "13 12 * * *"      # 台北 20:13 (備援，在本機 21:00 下載之前)
+    - cron: "23 * * * *"
   workflow_dispatch:
     inputs:
       dates:
-        description: "初始日期 (00Z)：空白 = 今天；單日 20261101；區間 20261101-20261111；或用逗號分隔"
+        description: "初始日期 (00Z)：空白 = 自動補齊網站缺的報；單日 20261101；區間 20261101-20261111；或用逗號分隔"
         required: false
 
 permissions:
@@ -39,29 +37,35 @@ jobs:
         run: |
           IN="${{ github.event.inputs.dates }}"
           TODAY=$(date -u +%Y%m%d)
+          GO=true
           if [ -z "$IN" ]; then
-            LIST="$TODAY"
+            # 自動模式：網站最後一報的隔天 → 今天 (最多往回 10 天、不超過實驗結束日)，只取資料已上線的日期
+            LATEST=$(gh api "repos/${{ github.repository }}/contents/runs?ref=gh-pages" --jq '[.[].name] | max' | cut -c1-8)
+            START=$(date -u -d "$LATEST +1 day" +%Y%m%d)
+            FLOOR=$(date -u -d "$TODAY -10 day" +%Y%m%d); [ "$START" -lt "$FLOOR" ] && START=$FLOOR
+            STOP=$TODAY; [ "$STOP" -gt "$END_DATE" ] && STOP=$END_DATE
+            echo "網站最後一報: ${LATEST}00，檢查 $START → $STOP"
+            LIST=""; d=$START
+            while [ "$d" -le "$STOP" ]; do
+              URL="https://storage.googleapis.com/ecmwf-open-data/${d}/00z/ifs/0p1/oper/${d}000000-120h-oper-fc-pl.index"
+              if curl -sfI "$URL" > /dev/null; then LIST="$LIST $d"; else echo "$d 資料尚未上線"; fi
+              d=$(date -u -d "$d +1 day" +%Y%m%d)
+            done
+            [ -z "$LIST" ] && { GO=false; echo "網站沒有缺報 (或資料未上線)，本次略過"; }
           elif [[ "$IN" == *-* ]]; then
             A=${IN%-*}; B=${IN#*-}; LIST=""
             d=$A; while [ "$d" -le "$B" ]; do LIST="$LIST $d"; d=$(date -u -d "$d +1 day" +%Y%m%d); done
           else
             LIST=$(echo "$IN" | tr ',' ' ')
           fi
-          GO=true
-          if [ "${{ github.event_name }}" = "schedule" ]; then
-            if [ "$TODAY" -gt "$END_DATE" ]; then
-              GO=false; echo "實驗已於 $END_DATE 結束，不再自動執行"
-            elif gh api "repos/${{ github.repository }}/contents/runs/${TODAY}00/manifest.json?ref=gh-pages" > /dev/null 2>&1; then
-              GO=false; echo "${TODAY}00 已在網站上，這個備援時段略過"
-            fi
-          fi
+          [ -z "$LIST" ] && LIST=$TODAY
           JSON=$(printf '%s\n' $LIST | jq -R . | jq -cs .)
           echo "dates=$JSON" >> "$GITHUB_OUTPUT"
           echo "go=$GO" >> "$GITHUB_OUTPUT"
           echo "日期: $JSON  執行: $GO"
 
       - name: 防止排程被停用 (60 天無活動)
-        if: github.event_name == 'schedule' && steps.d.outputs.go == 'true'
+        if: github.event_name == 'schedule'
         run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/daily.yml/enable"
 
   make:
