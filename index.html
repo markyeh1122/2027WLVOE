@@ -1,0 +1,656 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>2027冬季背風渦旋觀測實驗</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+/* Layout: one control strip above a white "chart sheet"; time readout leads, timeline sits under the map like a forecast-hour axis */
+:root {
+  --bg: #eef2f5;
+  --panel: #ffffff;
+  --fg: #1d2b3a;
+  --muted: #5b6b7b;
+  --line: #d3dbe3;
+  --accent: #3f74b0;
+  --accent-soft: #dfeaf5;
+  --track: #c9d4de;
+  --sheet: #ffffff;
+  --font-body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f151c; --panel: #17202a; --fg: #e2e8ee; --muted: #93a1b0;
+    --line: #2a3644; --accent: #7aaee3; --accent-soft: #1f3247; --track: #33414f;
+    --sheet: #ffffff; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f151c; --panel: #17202a; --fg: #e2e8ee; --muted: #93a1b0;
+  --line: #2a3644; --accent: #7aaee3; --accent-soft: #1f3247; --track: #33414f;
+  --sheet: #ffffff; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+}
+.wrap {
+  max-width: 1320px; margin: 0 auto;
+  padding-block: 20px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 14px;
+}
+
+header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 20px; }
+h1 { margin: 0; font-size: 1.55rem; font-weight: 700; letter-spacing: 0.02em; text-wrap: balance; }
+.meta { color: var(--muted); font-family: var(--font-data); font-size: 0.84rem; }
+
+.panel {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: 14px 16px; display: grid; gap: 12px;
+}
+
+/* top strip: product switch + time readout */
+.strip { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; }
+.strip .readout { margin-left: auto; }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button {
+  appearance: none; border: 0; background: transparent; color: var(--fg);
+  font: 500 0.92rem var(--font-body); padding: 7px 14px; cursor: pointer;
+}
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+:root[data-theme="dark"] .seg button[aria-pressed="true"] { color: #0f151c; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .seg button[aria-pressed="true"] { color: #0f151c; } }
+.seg button:not([aria-pressed="true"]):hover { background: var(--accent-soft); }
+
+.readout { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 16px; font-variant-numeric: tabular-nums; }
+.lead { font: 600 1.7rem var(--font-data); color: var(--accent); min-width: 5.2ch; }
+.tpe { font-size: 1.15rem; font-weight: 500; }
+.utc { font-family: var(--font-data); color: var(--muted); font-size: 0.9rem; }
+
+/* chart sheet(s) */
+.sheets { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); justify-items: center; }
+.sheets.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.sheet {
+  background: var(--sheet); border-radius: 6px; width: 100%;
+  /* keep the map + player controls inside one screen */
+  max-width: min(860px, max(320px, calc((100vh - 330px) * 1.09375)));
+  aspect-ratio: 1260 / 1152; display: grid; place-items: center; overflow: hidden;
+}
+.sheets.two .sheet { max-width: min(100%, max(320px, calc((100vh - 330px) * 1.09375))); }
+@media (max-width: 760px) { .sheet, .sheets.two .sheet { max-width: 100%; } }
+.sheet img { width: 100%; height: 100%; object-fit: contain; display: block; }
+
+/* player */
+.player { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.btns { display: inline-flex; gap: 6px; }
+.btn {
+  appearance: none; border: 1px solid var(--line); background: var(--panel); color: var(--fg);
+  width: 40px; height: 36px; border-radius: 8px; cursor: pointer; display: grid; place-items: center;
+}
+.btn:hover { background: var(--accent-soft); }
+.btn.play { width: 52px; background: var(--accent); border-color: var(--accent); color: #fff; }
+:root[data-theme="dark"] .btn.play { color: #0f151c; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .btn.play { color: #0f151c; } }
+.btn svg { width: 16px; height: 16px; fill: currentColor; }
+.speed { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 0.88rem; }
+.speed select {
+  font: 500 0.88rem var(--font-data); color: var(--fg); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px;
+}
+.loading { margin-left: auto; color: var(--muted); font: 0.82rem var(--font-data); }
+
+.timeline { display: grid; gap: 4px; }
+input[type="range"] { width: 100%; accent-color: var(--accent); margin: 0; height: 28px; cursor: pointer; }
+.ticks { position: relative; height: 34px; margin: 0 10px; }
+.tick {
+  position: absolute; transform: translateX(-50%); text-align: center; white-space: nowrap;
+  font: 0.75rem/1.3 var(--font-data); color: var(--muted); cursor: pointer;
+  background: none; border: 0; padding: 0;
+}
+.tick:first-child { transform: translateX(-10px); text-align: left; }
+.tick:first-child::before { margin-left: 10px; }
+.tick:last-child { transform: translateX(calc(-100% + 10px)); text-align: right; }
+.tick:last-child::before { margin-right: 10px; }
+.tick b { display: block; color: var(--fg); font-weight: 500; }
+.tick::before { content: ""; display: block; width: 1px; height: 5px; background: var(--track); margin: 0 auto 2px; }
+
+.runbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; }
+.runpick { display: inline-flex; align-items: center; gap: 8px; font-weight: 500; font-size: 0.95rem; }
+.runpick select {
+  font: 600 0.95rem var(--font-data); color: var(--fg); background: var(--panel);
+  border: 1px solid var(--accent); border-radius: 8px; padding: 6px 10px; max-width: 100%;
+}
+h2 { margin: 0; font-size: 1.15rem; font-weight: 700; letter-spacing: 0.02em; }
+.pickers { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.pickers label { display: inline-flex; align-items: center; gap: 8px; color: var(--muted); font-size: 0.9rem; }
+.pickers select {
+  font: 500 0.95rem var(--font-body); color: var(--fg); background: var(--panel);
+  border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; max-width: 100%;
+}
+.cmp-note { margin: 0; color: var(--muted); font-size: 0.88rem; }
+.cgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 1000px) { .cgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .cgrid { grid-template-columns: minmax(0, 1fr); } }
+.ccard { margin: 0; display: grid; gap: 6px; min-width: 0; }
+.ccard figcaption { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-size: 0.9rem; }
+.ccard .lead-tag {
+  font: 600 0.78rem var(--font-data); padding: 2px 8px; border-radius: 999px;
+  background: var(--accent-soft); color: var(--accent);
+}
+.ccard.ana .lead-tag { background: var(--accent); color: #fff; }
+:root[data-theme="dark"] .ccard.ana .lead-tag { color: #0f151c; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .ccard.ana .lead-tag { color: #0f151c; } }
+.ccard .run-lbl { font-family: var(--font-data); color: var(--muted); font-size: 0.82rem; }
+.ccard button {
+  appearance: none; border: 0; padding: 0; cursor: zoom-in; background: var(--sheet);
+  border-radius: 6px; overflow: hidden; display: block; width: 100%; aspect-ratio: 1260 / 1152;
+}
+.ccard button img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.lightbox {
+  position: fixed; inset: 0; z-index: 50; background: rgba(8, 12, 18, 0.88);
+  display: grid; place-items: center; cursor: zoom-out;
+  padding: calc(16px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px))
+           calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+}
+.lightbox[hidden] { display: none; }
+.lightbox img { max-width: 100%; max-height: 100%; background: #fff; border-radius: 6px; }
+.lb-close {
+  position: absolute; top: calc(12px + env(safe-area-inset-top, 0px));
+  right: max(12px, env(safe-area-inset-right, 0px)); width: 40px; height: 40px; border-radius: 50%;
+  border: 0; background: rgba(255, 255, 255, 0.15); color: #fff; font-size: 1.1rem; cursor: pointer;
+}
+.dlbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.dlbtn {
+  appearance: none; display: inline-flex; align-items: center; gap: 8px; cursor: pointer;
+  font: 500 0.9rem var(--font-body); padding: 7px 14px; border-radius: 8px;
+  background: var(--accent); color: #fff; border: 1px solid var(--accent);
+}
+:root[data-theme="dark"] .dlbtn:not(.ghost) { color: #0f151c; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .dlbtn:not(.ghost) { color: #0f151c; } }
+.dlbtn.ghost { background: var(--panel); color: var(--fg); border-color: var(--line); }
+.dlbtn.ghost:hover { background: var(--accent-soft); }
+.dlbtn svg { width: 14px; height: 14px; fill: currentColor; }
+.dlbtn[disabled] { opacity: 0.6; cursor: default; }
+.dlname { font: 0.82rem var(--font-data); color: var(--muted); overflow-wrap: anywhere; min-width: 0; }
+.dlmsg { font-size: 0.85rem; color: var(--muted); }
+.sheet.snd { aspect-ratio: 1056 / 1100; max-width: min(860px, max(320px, calc((100vh - 200px) * 0.96))); }
+@media (max-width: 760px) { .sheet.snd { max-width: 100%; } }
+.foot { color: var(--muted); font-size: 0.82rem; display: flex; flex-wrap: wrap; gap: 4px 18px; }
+kbd {
+  font: 0.75rem var(--font-data); border: 1px solid var(--line); border-bottom-width: 2px;
+  border-radius: 4px; padding: 0 5px; background: var(--panel); color: var(--fg);
+}
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (max-width: 760px) {
+  .sheets.two { grid-template-columns: minmax(0, 1fr); }
+  .lead { font-size: 1.4rem; }
+  .loading { margin-left: 0; width: 100%; }
+  .tick span { display: none; }
+}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>2027冬季背風渦旋觀測實驗</h1>
+    <div class="runbar">
+      <label class="runpick" for="run">初始時間
+        <select id="run"></select>
+      </label>
+      <span class="meta" id="meta">ECMWF IFS 0.1° · 21–26°N, 118–125°E</span>
+    </div>
+  </header>
+
+  <section class="panel" aria-label="預報動畫" id="anim">
+    <div class="strip">
+      <div class="seg" role="group" aria-label="選擇圖層">
+        <button type="button" id="v-mslp" data-view="mslp" aria-pressed="true">海平面氣壓 + 10 m 風</button>
+        <button type="button" id="v-850" data-view="850" aria-pressed="false">850 hPa 高度 + 風</button>
+        <button type="button" id="v-both" data-view="both" aria-pressed="false">並排</button>
+      </div>
+      <div class="seg" role="group" aria-label="風場呈現方式">
+        <button type="button" id="w-barb" data-wind="barb" aria-pressed="true">風羽</button>
+        <button type="button" id="w-stream" data-wind="stream" aria-pressed="false">流線</button>
+      </div>
+      <div class="readout" aria-live="polite">
+        <span class="lead" id="lead">+0 h</span>
+        <span class="tpe" id="tpe">台北時間</span>
+        <span class="utc" id="utc">UTC</span>
+      </div>
+    </div>
+
+    <div class="sheets" id="sheets"></div>
+
+    <div class="player">
+      <div class="btns">
+        <button class="btn" type="button" id="prev" aria-label="上一個時次" title="上一個時次 (←)">
+          <svg viewBox="0 0 16 16"><path d="M3 2h2v12H3zM14 2v12L6 8z"/></svg>
+        </button>
+        <button class="btn play" type="button" id="play" aria-label="播放" title="播放 / 暫停 (空白鍵)">
+          <svg viewBox="0 0 16 16" id="play-ico"><path d="M4 2l10 6-10 6z"/></svg>
+        </button>
+        <button class="btn" type="button" id="next" aria-label="下一個時次" title="下一個時次 (→)">
+          <svg viewBox="0 0 16 16"><path d="M11 2h2v12h-2zM2 2v12l8-6z"/></svg>
+        </button>
+      </div>
+      <label class="speed" for="speed">速度
+        <select id="speed">
+          <option value="1000">慢 (1 張/秒)</option>
+          <option value="500" selected>中 (2 張/秒)</option>
+          <option value="250">快 (4 張/秒)</option>
+          <option value="150">很快 (約 7 張/秒)</option>
+        </select>
+      </label>
+      <span class="loading" id="loading">載入圖片中…</span>
+    </div>
+
+    <div class="timeline">
+      <input type="range" id="slider" min="0" max="40" value="0" step="1" aria-label="預報時數">
+      <div class="ticks" id="ticks"></div>
+    </div>
+  </section>
+
+  <section class="panel" aria-labelledby="cmp-h" id="compare" hidden>
+    <div class="strip">
+      <h2 id="cmp-h">模式逐 run 比較</h2>
+      <div class="seg" role="group" aria-label="比較圖層">
+        <button type="button" data-cmp="mslp" aria-pressed="true">海平面氣壓 + 10 m 風</button>
+        <button type="button" data-cmp="850" aria-pressed="false">850 hPa 高度 + 風</button>
+      </div>
+      <div class="readout"><span class="tpe" id="cmp-valid"></span><span class="utc" id="cmp-utc"></span></div>
+    </div>
+    <p class="cmp-note">同一個有效時間（本報的初始時間），由近到遠排列前幾報的預報。風羽或流線跟上方動畫的設定相同，點圖可放大。</p>
+    <div class="cgrid" id="cgrid"></div>
+  </section>
+
+  <div class="lightbox" id="lightbox" hidden>
+    <button type="button" class="lb-close" id="lb-close" aria-label="關閉">✕</button>
+    <img id="lb-img" alt="">
+  </div>
+
+  <section class="panel" aria-labelledby="snd-h" id="sounding" hidden>
+    <div class="strip">
+      <h2 id="snd-h">預報探空</h2>
+      <div class="pickers">
+        <label for="snd-site">地點
+          <select id="snd-site"></select>
+        </label>
+        <label for="snd-time">時間
+          <select id="snd-time"></select>
+        </label>
+      </div>
+      <div class="readout"><span class="utc" id="snd-info"></span></div>
+    </div>
+    <div class="dlbar" id="snd-dl" hidden>
+      <button type="button" class="dlbtn" id="dl-one">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M7 1h2v8l3-3 1.4 1.4L8 12.8 2.6 7.4 4 6l3 3z"/><path d="M2 13h12v2H2z"/></svg>
+        <span>下載此探空文字檔</span>
+      </button>
+      <button type="button" class="dlbtn ghost" id="dl-all">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M7 1h2v8l3-3 1.4 1.4L8 12.8 2.6 7.4 4 6l3 3z"/><path d="M2 13h12v2H2z"/></svg>
+        <span>下載本報全部探空 (zip)</span>
+      </button>
+      <span class="dlname" id="dl-name"></span>
+      <span class="dlmsg" id="dl-msg" role="status"></span>
+    </div>
+    <div class="sheets"><div class="sheet snd"><img id="snd-img" alt="預報探空圖"></div></div>
+  </section>
+
+  <div class="foot">
+    <span>資料來源：ECMWF Open Data（Google Cloud），IFS HRES 0.1°，每 3 小時一個時次</span>
+    <span>快捷鍵：<kbd>空白</kbd> 播放/暫停 · <kbd>←</kbd><kbd>→</kbd> 切換時次 · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> 切換圖層 · <kbd>W</kbd> 風羽/流線</span>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+(function () {
+  // M = { runs: [ { init: "2026111300", steps: [...], sounding: {...} | null }, ... ] }  (新 → 舊)
+  var M = {"runs": [{"init": "2026112800", "steps": [0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78, 81, 84, 87, 90, 93, 96, 99, 102, 105, 108, 111, 114, 117, 120], "sounding": {"init": "2026112800", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026112800.edt.txt", "24": "46692-2026112900.edt.txt", "48": "46692-2026113000.edt.txt", "72": "46692-2026120100.edt.txt", "96": "46692-2026120200.edt.txt", "120": "46692-2026120300.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026112800.edt.txt", "24": "46695-2026112900.edt.txt", "48": "46695-2026113000.edt.txt", "72": "46695-2026120100.edt.txt", "96": "46695-2026120200.edt.txt", "120": "46695-2026120300.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026112800.edt.txt", "24": "47918-2026112900.edt.txt", "48": "47918-2026113000.edt.txt", "72": "47918-2026120100.edt.txt", "96": "47918-2026120200.edt.txt", "120": "47918-2026120300.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026112800.edt.txt", "24": "SETW-2026112900.edt.txt", "48": "SETW-2026113000.edt.txt", "72": "SETW-2026120100.edt.txt", "96": "SETW-2026120200.edt.txt", "120": "SETW-2026120300.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026112800.edt.txt", "24": "SWTW-2026112900.edt.txt", "48": "SWTW-2026113000.edt.txt", "72": "SWTW-2026120100.edt.txt", "96": "SWTW-2026120200.edt.txt", "120": "SWTW-2026120300.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026112800.zip"}, "compare": [{"init": "2026112700", "lead": 24}, {"init": "2026112600", "lead": 48}, {"init": "2026112500", "lead": 72}, {"init": "2026112400", "lead": 96}, {"init": "2026112300", "lead": 120}]}, {"init": "2026112700", "steps": [0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78, 81, 84, 87, 90, 93, 96, 99, 102, 105, 108, 111, 114, 117, 120], "sounding": {"init": "2026112700", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026112700.edt.txt", "24": "46692-2026112800.edt.txt", "48": "46692-2026112900.edt.txt", "72": "46692-2026113000.edt.txt", "96": "46692-2026120100.edt.txt", "120": "46692-2026120200.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026112700.edt.txt", "24": "46695-2026112800.edt.txt", "48": "46695-2026112900.edt.txt", "72": "46695-2026113000.edt.txt", "96": "46695-2026120100.edt.txt", "120": "46695-2026120200.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026112700.edt.txt", "24": "47918-2026112800.edt.txt", "48": "47918-2026112900.edt.txt", "72": "47918-2026113000.edt.txt", "96": "47918-2026120100.edt.txt", "120": "47918-2026120200.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026112700.edt.txt", "24": "SETW-2026112800.edt.txt", "48": "SETW-2026112900.edt.txt", "72": "SETW-2026113000.edt.txt", "96": "SETW-2026120100.edt.txt", "120": "SETW-2026120200.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026112700.edt.txt", "24": "SWTW-2026112800.edt.txt", "48": "SWTW-2026112900.edt.txt", "72": "SWTW-2026113000.edt.txt", "96": "SWTW-2026120100.edt.txt", "120": "SWTW-2026120200.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026112700.zip"}, "compare": [{"init": "2026112600", "lead": 24}, {"init": "2026112500", "lead": 48}, {"init": "2026112400", "lead": 72}, {"init": "2026112300", "lead": 96}, {"init": "2026112200", "lead": 120}]}, {"init": "2026112600", "steps": [0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78, 81, 84, 87, 90, 93, 96, 99, 102, 105, 108, 111, 114, 117, 120], "sounding": {"init": "2026112600", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026112600.edt.txt", "24": "46692-2026112700.edt.txt", "48": "46692-2026112800.edt.txt", "72": "46692-2026112900.edt.txt", "96": "46692-2026113000.edt.txt", "120": "46692-2026120100.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026112600.edt.txt", "24": "46695-2026112700.edt.txt", "48": "46695-2026112800.edt.txt", "72": "46695-2026112900.edt.txt", "96": "46695-2026113000.edt.txt", "120": "46695-2026120100.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026112600.edt.txt", "24": "47918-2026112700.edt.txt", "48": "47918-2026112800.edt.txt", "72": "47918-2026112900.edt.txt", "96": "47918-2026113000.edt.txt", "120": "47918-2026120100.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026112600.edt.txt", "24": "SETW-2026112700.edt.txt", "48": "SETW-2026112800.edt.txt", "72": "SETW-2026112900.edt.txt", "96": "SETW-2026113000.edt.txt", "120": "SETW-2026120100.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026112600.edt.txt", "24": "SWTW-2026112700.edt.txt", "48": "SWTW-2026112800.edt.txt", "72": "SWTW-2026112900.edt.txt", "96": "SWTW-2026113000.edt.txt", "120": "SWTW-2026120100.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026112600.zip"}, "compare": [{"init": "2026112500", "lead": 24}, {"init": "2026112400", "lead": 48}, {"init": "2026112300", "lead": 72}, {"init": "2026112200", "lead": 96}, {"init": "2026112100", "lead": 120}]}, {"init": "2026112500", "steps": [0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78, 81, 84, 87, 90, 93, 96, 99, 102, 105, 108, 111, 114, 117, 120], "sounding": {"init": "2026112500", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026112500.edt.txt", "24": "46692-2026112600.edt.txt", "48": "46692-2026112700.edt.txt", "72": "46692-2026112800.edt.txt", "96": "46692-2026112900.edt.txt", "120": "46692-2026113000.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026112500.edt.txt", "24": "46695-2026112600.edt.txt", "48": "46695-2026112700.edt.txt", "72": "46695-2026112800.edt.txt", "96": "46695-2026112900.edt.txt", "120": "46695-2026113000.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026112500.edt.txt", "24": "47918-2026112600.edt.txt", "48": "47918-2026112700.edt.txt", "72": "47918-2026112800.edt.txt", "96": "47918-2026112900.edt.txt", "120": "47918-2026113000.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026112500.edt.txt", "24": "SETW-2026112600.edt.txt", "48": "SETW-2026112700.edt.txt", "72": "SETW-2026112800.edt.txt", "96": "SETW-2026112900.edt.txt", "120": "SETW-2026113000.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026112500.edt.txt", "24": "SWTW-2026112600.edt.txt", "48": "SWTW-2026112700.edt.txt", "72": "SWTW-2026112800.edt.txt", "96": "SWTW-2026112900.edt.txt", "120": "SWTW-2026113000.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026112500.zip"}, "compare": [{"init": "2026112400", "lead": 24}, {"init": "2026112300", "lead": 48}, {"init": "2026112200", "lead": 72}, {"init": "2026112100", "lead": 96}, {"init": "2026112000", "lead": 120}]}, {"init": "2026112400", "steps": [0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78, 81, 84, 87, 90, 93, 96, 99, 102, 105, 108, 111, 114, 117, 120], "sounding": {"init": "2026112400", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026112400.edt.txt", "24": "46692-2026112500.edt.txt", "48": "46692-2026112600.edt.txt", "72": "46692-2026112700.edt.txt", "96": "46692-2026112800.edt.txt", "120": "46692-2026112900.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026112400.edt.txt", "24": "46695-2026112500.edt.txt", "48": "46695-2026112600.edt.txt", "72": "46695-2026112700.edt.txt", "96": "46695-2026112800.edt.txt", "120": "46695-2026112900.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026112400.edt.txt", "24": "47918-2026112500.edt.txt", "48": "47918-2026112600.edt.txt", "72": "47918-2026112700.edt.txt", "96": "47918-2026112800.edt.txt", "120": "47918-2026112900.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026112400.edt.txt", "24": "SETW-2026112500.edt.txt", "48": "SETW-2026112600.edt.txt", "72": "SETW-2026112700.edt.txt", "96": "SETW-2026112800.edt.txt", "120": "SETW-2026112900.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026112400.edt.txt", "24": "SWTW-2026112500.edt.txt", "48": "SWTW-2026112600.edt.txt", "72": "SWTW-2026112700.edt.txt", "96": "SWTW-2026112800.edt.txt", "120": "SWTW-2026112900.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026112400.zip"}, "compare": [{"init": "2026112300", "lead": 24}, {"init": "2026112200", "lead": 48}, {"init": "2026112100", "lead": 72}, {"init": "2026112000", "lead": 96}, {"init": "2026111900", "lead": 120}]}, {"init": "2026112300", "steps": [0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78, 81, 84, 87, 90, 93, 96, 99, 102, 105, 108, 111, 114, 117, 120], "sounding": {"init": "2026112300", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026112300.edt.txt", "24": "46692-2026112400.edt.txt", "48": "46692-2026112500.edt.txt", "72": "46692-2026112600.edt.txt", "96": "46692-2026112700.edt.txt", "120": "46692-2026112800.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026112300.edt.txt", "24": "46695-2026112400.edt.txt", "48": "46695-2026112500.edt.txt", "72": "46695-2026112600.edt.txt", "96": "46695-2026112700.edt.txt", "120": "46695-2026112800.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026112300.edt.txt", "24": "47918-2026112400.edt.txt", "48": "47918-2026112500.edt.txt", "72": "47918-2026112600.edt.txt", "96": "47918-2026112700.edt.txt", "120": "47918-2026112800.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026112300.edt.txt", "24": "SETW-2026112400.edt.txt", "48": "SETW-2026112500.edt.txt", "72": "SETW-2026112600.edt.txt", "96": "SETW-2026112700.edt.txt", "120": "SETW-2026112800.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026112300.edt.txt", "24": "SWTW-2026112400.edt.txt", "48": "SWTW-2026112500.edt.txt", "72": "SWTW-2026112600.edt.txt", "96": "SWTW-2026112700.edt.txt", "120": "SWTW-2026112800.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026112300.zip"}, "compare": [{"init": "2026112200", "lead": 24}, {"init": "2026112100", "lead": 48}, {"init": "2026112000", "lead": 72}, {"init": "2026111900", "lead": 96}, {"init": "2026111800", "lead": 120}]}, {"init": "2026112200", "steps": [0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 54, 57, 60, 63, 66, 69, 72, 75, 78, 81, 84, 87, 90, 93, 96, 99, 102, 105, 108, 111, 114, 117, 120], "sounding": {"init": "2026112200", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026112200.edt.txt", "24": "46692-2026112300.edt.txt", "48": "46692-2026112400.edt.txt", "72": "46692-2026112500.edt.txt", "96": "46692-2026112600.edt.txt", "120": "46692-2026112700.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026112200.edt.txt", "24": "46695-2026112300.edt.txt", "48": "46695-2026112400.edt.txt", "72": "46695-2026112500.edt.txt", "96": "46695-2026112600.edt.txt", "120": "46695-2026112700.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026112200.edt.txt", "24": "47918-2026112300.edt.txt", "48": "47918-2026112400.edt.txt", "72": "47918-2026112500.edt.txt", "96": "47918-2026112600.edt.txt", "120": "47918-2026112700.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026112200.edt.txt", "24": "SETW-2026112300.edt.txt", "48": "SETW-2026112400.edt.txt", "72": "SETW-2026112500.edt.txt", "96": "SETW-2026112600.edt.txt", "120": "SETW-2026112700.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026112200.edt.txt", "24": "SWTW-2026112300.edt.txt", "48": "SWTW-2026112400.edt.txt", "72": "SWTW-2026112500.edt.txt", "96": "SWTW-2026112600.edt.txt", "120": "SWTW-2026112700.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026112200.zip"}, "compare": [{"init": "2026112100", "lead": 24}, {"init": "2026112000", "lead": 48}, {"init": "2026111900", "lead": 72}, {"init": "2026111800", "lead": 96}, {"init": "2026111700", "lead": 120}]}, {"init": "2026112100", "steps": [], "sounding": {"init": "2026112100", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026112100.edt.txt", "24": "46692-2026112200.edt.txt", "48": "46692-2026112300.edt.txt", "72": "46692-2026112400.edt.txt", "96": "46692-2026112500.edt.txt", "120": "46692-2026112600.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026112100.edt.txt", "24": "46695-2026112200.edt.txt", "48": "46695-2026112300.edt.txt", "72": "46695-2026112400.edt.txt", "96": "46695-2026112500.edt.txt", "120": "46695-2026112600.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026112100.edt.txt", "24": "47918-2026112200.edt.txt", "48": "47918-2026112300.edt.txt", "72": "47918-2026112400.edt.txt", "96": "47918-2026112500.edt.txt", "120": "47918-2026112600.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026112100.edt.txt", "24": "SETW-2026112200.edt.txt", "48": "SETW-2026112300.edt.txt", "72": "SETW-2026112400.edt.txt", "96": "SETW-2026112500.edt.txt", "120": "SETW-2026112600.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026112100.edt.txt", "24": "SWTW-2026112200.edt.txt", "48": "SWTW-2026112300.edt.txt", "72": "SWTW-2026112400.edt.txt", "96": "SWTW-2026112500.edt.txt", "120": "SWTW-2026112600.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026112100.zip"}, "compare": [{"init": "2026112000", "lead": 24}, {"init": "2026111900", "lead": 48}, {"init": "2026111800", "lead": 72}, {"init": "2026111700", "lead": 96}, {"init": "2026111600", "lead": 120}], "lite": true}, {"init": "2026112000", "steps": [], "sounding": {"init": "2026112000", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026112000.edt.txt", "24": "46692-2026112100.edt.txt", "48": "46692-2026112200.edt.txt", "72": "46692-2026112300.edt.txt", "96": "46692-2026112400.edt.txt", "120": "46692-2026112500.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026112000.edt.txt", "24": "46695-2026112100.edt.txt", "48": "46695-2026112200.edt.txt", "72": "46695-2026112300.edt.txt", "96": "46695-2026112400.edt.txt", "120": "46695-2026112500.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026112000.edt.txt", "24": "47918-2026112100.edt.txt", "48": "47918-2026112200.edt.txt", "72": "47918-2026112300.edt.txt", "96": "47918-2026112400.edt.txt", "120": "47918-2026112500.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026112000.edt.txt", "24": "SETW-2026112100.edt.txt", "48": "SETW-2026112200.edt.txt", "72": "SETW-2026112300.edt.txt", "96": "SETW-2026112400.edt.txt", "120": "SETW-2026112500.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026112000.edt.txt", "24": "SWTW-2026112100.edt.txt", "48": "SWTW-2026112200.edt.txt", "72": "SWTW-2026112300.edt.txt", "96": "SWTW-2026112400.edt.txt", "120": "SWTW-2026112500.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026112000.zip"}, "compare": [{"init": "2026111900", "lead": 24}, {"init": "2026111800", "lead": 48}, {"init": "2026111700", "lead": 72}, {"init": "2026111600", "lead": 96}, {"init": "2026111500", "lead": 120}], "lite": true}, {"init": "2026111900", "steps": [], "sounding": {"init": "2026111900", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026111900.edt.txt", "24": "46692-2026112000.edt.txt", "48": "46692-2026112100.edt.txt", "72": "46692-2026112200.edt.txt", "96": "46692-2026112300.edt.txt", "120": "46692-2026112400.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026111900.edt.txt", "24": "46695-2026112000.edt.txt", "48": "46695-2026112100.edt.txt", "72": "46695-2026112200.edt.txt", "96": "46695-2026112300.edt.txt", "120": "46695-2026112400.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026111900.edt.txt", "24": "47918-2026112000.edt.txt", "48": "47918-2026112100.edt.txt", "72": "47918-2026112200.edt.txt", "96": "47918-2026112300.edt.txt", "120": "47918-2026112400.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026111900.edt.txt", "24": "SETW-2026112000.edt.txt", "48": "SETW-2026112100.edt.txt", "72": "SETW-2026112200.edt.txt", "96": "SETW-2026112300.edt.txt", "120": "SETW-2026112400.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026111900.edt.txt", "24": "SWTW-2026112000.edt.txt", "48": "SWTW-2026112100.edt.txt", "72": "SWTW-2026112200.edt.txt", "96": "SWTW-2026112300.edt.txt", "120": "SWTW-2026112400.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026111900.zip"}, "compare": [{"init": "2026111800", "lead": 24}, {"init": "2026111700", "lead": 48}, {"init": "2026111600", "lead": 72}, {"init": "2026111500", "lead": 96}, {"init": "2026111400", "lead": 120}], "lite": true}, {"init": "2026111800", "steps": [], "sounding": {"init": "2026111800", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026111800.edt.txt", "24": "46692-2026111900.edt.txt", "48": "46692-2026112000.edt.txt", "72": "46692-2026112100.edt.txt", "96": "46692-2026112200.edt.txt", "120": "46692-2026112300.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026111800.edt.txt", "24": "46695-2026111900.edt.txt", "48": "46695-2026112000.edt.txt", "72": "46695-2026112100.edt.txt", "96": "46695-2026112200.edt.txt", "120": "46695-2026112300.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026111800.edt.txt", "24": "47918-2026111900.edt.txt", "48": "47918-2026112000.edt.txt", "72": "47918-2026112100.edt.txt", "96": "47918-2026112200.edt.txt", "120": "47918-2026112300.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026111800.edt.txt", "24": "SETW-2026111900.edt.txt", "48": "SETW-2026112000.edt.txt", "72": "SETW-2026112100.edt.txt", "96": "SETW-2026112200.edt.txt", "120": "SETW-2026112300.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026111800.edt.txt", "24": "SWTW-2026111900.edt.txt", "48": "SWTW-2026112000.edt.txt", "72": "SWTW-2026112100.edt.txt", "96": "SWTW-2026112200.edt.txt", "120": "SWTW-2026112300.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026111800.zip"}, "compare": [{"init": "2026111700", "lead": 24}, {"init": "2026111600", "lead": 48}, {"init": "2026111500", "lead": 72}, {"init": "2026111400", "lead": 96}, {"init": "2026111300", "lead": 120}], "lite": true}, {"init": "2026111700", "steps": [], "sounding": {"init": "2026111700", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026111700.edt.txt", "24": "46692-2026111800.edt.txt", "48": "46692-2026111900.edt.txt", "72": "46692-2026112000.edt.txt", "96": "46692-2026112100.edt.txt", "120": "46692-2026112200.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026111700.edt.txt", "24": "46695-2026111800.edt.txt", "48": "46695-2026111900.edt.txt", "72": "46695-2026112000.edt.txt", "96": "46695-2026112100.edt.txt", "120": "46695-2026112200.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026111700.edt.txt", "24": "47918-2026111800.edt.txt", "48": "47918-2026111900.edt.txt", "72": "47918-2026112000.edt.txt", "96": "47918-2026112100.edt.txt", "120": "47918-2026112200.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026111700.edt.txt", "24": "SETW-2026111800.edt.txt", "48": "SETW-2026111900.edt.txt", "72": "SETW-2026112000.edt.txt", "96": "SETW-2026112100.edt.txt", "120": "SETW-2026112200.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026111700.edt.txt", "24": "SWTW-2026111800.edt.txt", "48": "SWTW-2026111900.edt.txt", "72": "SWTW-2026112000.edt.txt", "96": "SWTW-2026112100.edt.txt", "120": "SWTW-2026112200.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026111700.zip"}, "compare": [{"init": "2026111600", "lead": 24}, {"init": "2026111500", "lead": 48}, {"init": "2026111400", "lead": 72}, {"init": "2026111300", "lead": 96}, {"init": "2026111200", "lead": 120}], "lite": true}, {"init": "2026111600", "steps": [], "sounding": {"init": "2026111600", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026111600.edt.txt", "24": "46692-2026111700.edt.txt", "48": "46692-2026111800.edt.txt", "72": "46692-2026111900.edt.txt", "96": "46692-2026112000.edt.txt", "120": "46692-2026112100.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026111600.edt.txt", "24": "46695-2026111700.edt.txt", "48": "46695-2026111800.edt.txt", "72": "46695-2026111900.edt.txt", "96": "46695-2026112000.edt.txt", "120": "46695-2026112100.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026111600.edt.txt", "24": "47918-2026111700.edt.txt", "48": "47918-2026111800.edt.txt", "72": "47918-2026111900.edt.txt", "96": "47918-2026112000.edt.txt", "120": "47918-2026112100.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026111600.edt.txt", "24": "SETW-2026111700.edt.txt", "48": "SETW-2026111800.edt.txt", "72": "SETW-2026111900.edt.txt", "96": "SETW-2026112000.edt.txt", "120": "SETW-2026112100.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026111600.edt.txt", "24": "SWTW-2026111700.edt.txt", "48": "SWTW-2026111800.edt.txt", "72": "SWTW-2026111900.edt.txt", "96": "SWTW-2026112000.edt.txt", "120": "SWTW-2026112100.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026111600.zip"}, "compare": [{"init": "2026111500", "lead": 24}, {"init": "2026111400", "lead": 48}, {"init": "2026111300", "lead": 72}, {"init": "2026111200", "lead": 96}, {"init": "2026111100", "lead": 120}], "lite": true}, {"init": "2026111500", "steps": [], "sounding": {"init": "2026111500", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026111500.edt.txt", "24": "46692-2026111600.edt.txt", "48": "46692-2026111700.edt.txt", "72": "46692-2026111800.edt.txt", "96": "46692-2026111900.edt.txt", "120": "46692-2026112000.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026111500.edt.txt", "24": "46695-2026111600.edt.txt", "48": "46695-2026111700.edt.txt", "72": "46695-2026111800.edt.txt", "96": "46695-2026111900.edt.txt", "120": "46695-2026112000.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026111500.edt.txt", "24": "47918-2026111600.edt.txt", "48": "47918-2026111700.edt.txt", "72": "47918-2026111800.edt.txt", "96": "47918-2026111900.edt.txt", "120": "47918-2026112000.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026111500.edt.txt", "24": "SETW-2026111600.edt.txt", "48": "SETW-2026111700.edt.txt", "72": "SETW-2026111800.edt.txt", "96": "SETW-2026111900.edt.txt", "120": "SETW-2026112000.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026111500.edt.txt", "24": "SWTW-2026111600.edt.txt", "48": "SWTW-2026111700.edt.txt", "72": "SWTW-2026111800.edt.txt", "96": "SWTW-2026111900.edt.txt", "120": "SWTW-2026112000.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026111500.zip"}, "compare": [{"init": "2026111400", "lead": 24}, {"init": "2026111300", "lead": 48}, {"init": "2026111200", "lead": 72}, {"init": "2026111100", "lead": 96}, {"init": "2026111000", "lead": 120}], "lite": true}, {"init": "2026111400", "steps": [], "sounding": {"init": "2026111400", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026111400.edt.txt", "24": "46692-2026111500.edt.txt", "48": "46692-2026111600.edt.txt", "72": "46692-2026111700.edt.txt", "96": "46692-2026111800.edt.txt", "120": "46692-2026111900.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026111400.edt.txt", "24": "46695-2026111500.edt.txt", "48": "46695-2026111600.edt.txt", "72": "46695-2026111700.edt.txt", "96": "46695-2026111800.edt.txt", "120": "46695-2026111900.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026111400.edt.txt", "24": "47918-2026111500.edt.txt", "48": "47918-2026111600.edt.txt", "72": "47918-2026111700.edt.txt", "96": "47918-2026111800.edt.txt", "120": "47918-2026111900.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026111400.edt.txt", "24": "SETW-2026111500.edt.txt", "48": "SETW-2026111600.edt.txt", "72": "SETW-2026111700.edt.txt", "96": "SETW-2026111800.edt.txt", "120": "SETW-2026111900.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026111400.edt.txt", "24": "SWTW-2026111500.edt.txt", "48": "SWTW-2026111600.edt.txt", "72": "SWTW-2026111700.edt.txt", "96": "SWTW-2026111800.edt.txt", "120": "SWTW-2026111900.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026111400.zip"}, "compare": [{"init": "2026111300", "lead": 24}, {"init": "2026111200", "lead": 48}, {"init": "2026111100", "lead": 72}, {"init": "2026111000", "lead": 96}, {"init": "2026110900", "lead": 120}], "lite": true}, {"init": "2026111300", "steps": [], "sounding": {"init": "2026111300", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026111300.edt.txt", "24": "46692-2026111400.edt.txt", "48": "46692-2026111500.edt.txt", "72": "46692-2026111600.edt.txt", "96": "46692-2026111700.edt.txt", "120": "46692-2026111800.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026111300.edt.txt", "24": "46695-2026111400.edt.txt", "48": "46695-2026111500.edt.txt", "72": "46695-2026111600.edt.txt", "96": "46695-2026111700.edt.txt", "120": "46695-2026111800.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026111300.edt.txt", "24": "47918-2026111400.edt.txt", "48": "47918-2026111500.edt.txt", "72": "47918-2026111600.edt.txt", "96": "47918-2026111700.edt.txt", "120": "47918-2026111800.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026111300.edt.txt", "24": "SETW-2026111400.edt.txt", "48": "SETW-2026111500.edt.txt", "72": "SETW-2026111600.edt.txt", "96": "SETW-2026111700.edt.txt", "120": "SETW-2026111800.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026111300.edt.txt", "24": "SWTW-2026111400.edt.txt", "48": "SWTW-2026111500.edt.txt", "72": "SWTW-2026111600.edt.txt", "96": "SWTW-2026111700.edt.txt", "120": "SWTW-2026111800.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026111300.zip"}, "compare": [{"init": "2026111200", "lead": 24}, {"init": "2026111100", "lead": 48}, {"init": "2026111000", "lead": 72}, {"init": "2026110900", "lead": 96}, {"init": "2026110800", "lead": 120}], "lite": true}, {"init": "2026111200", "steps": [], "sounding": {"init": "2026111200", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026111200.edt.txt", "24": "46692-2026111300.edt.txt", "48": "46692-2026111400.edt.txt", "72": "46692-2026111500.edt.txt", "96": "46692-2026111600.edt.txt", "120": "46692-2026111700.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026111200.edt.txt", "24": "46695-2026111300.edt.txt", "48": "46695-2026111400.edt.txt", "72": "46695-2026111500.edt.txt", "96": "46695-2026111600.edt.txt", "120": "46695-2026111700.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026111200.edt.txt", "24": "47918-2026111300.edt.txt", "48": "47918-2026111400.edt.txt", "72": "47918-2026111500.edt.txt", "96": "47918-2026111600.edt.txt", "120": "47918-2026111700.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026111200.edt.txt", "24": "SETW-2026111300.edt.txt", "48": "SETW-2026111400.edt.txt", "72": "SETW-2026111500.edt.txt", "96": "SETW-2026111600.edt.txt", "120": "SETW-2026111700.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026111200.edt.txt", "24": "SWTW-2026111300.edt.txt", "48": "SWTW-2026111400.edt.txt", "72": "SWTW-2026111500.edt.txt", "96": "SWTW-2026111600.edt.txt", "120": "SWTW-2026111700.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026111200.zip"}, "compare": [{"init": "2026111100", "lead": 24}, {"init": "2026111000", "lead": 48}, {"init": "2026110900", "lead": 72}, {"init": "2026110800", "lead": 96}, {"init": "2026110700", "lead": 120}], "lite": true}, {"init": "2026111100", "steps": [], "sounding": {"init": "2026111100", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026111100.edt.txt", "24": "46692-2026111200.edt.txt", "48": "46692-2026111300.edt.txt", "72": "46692-2026111400.edt.txt", "96": "46692-2026111500.edt.txt", "120": "46692-2026111600.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026111100.edt.txt", "24": "46695-2026111200.edt.txt", "48": "46695-2026111300.edt.txt", "72": "46695-2026111400.edt.txt", "96": "46695-2026111500.edt.txt", "120": "46695-2026111600.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026111100.edt.txt", "24": "47918-2026111200.edt.txt", "48": "47918-2026111300.edt.txt", "72": "47918-2026111400.edt.txt", "96": "47918-2026111500.edt.txt", "120": "47918-2026111600.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026111100.edt.txt", "24": "SETW-2026111200.edt.txt", "48": "SETW-2026111300.edt.txt", "72": "SETW-2026111400.edt.txt", "96": "SETW-2026111500.edt.txt", "120": "SETW-2026111600.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026111100.edt.txt", "24": "SWTW-2026111200.edt.txt", "48": "SWTW-2026111300.edt.txt", "72": "SWTW-2026111400.edt.txt", "96": "SWTW-2026111500.edt.txt", "120": "SWTW-2026111600.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026111100.zip"}, "compare": [{"init": "2026111000", "lead": 24}, {"init": "2026110900", "lead": 48}, {"init": "2026110800", "lead": 72}, {"init": "2026110700", "lead": 96}, {"init": "2026110600", "lead": 120}], "lite": true}, {"init": "2026111000", "steps": [], "sounding": {"init": "2026111000", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026111000.edt.txt", "24": "46692-2026111100.edt.txt", "48": "46692-2026111200.edt.txt", "72": "46692-2026111300.edt.txt", "96": "46692-2026111400.edt.txt", "120": "46692-2026111500.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026111000.edt.txt", "24": "46695-2026111100.edt.txt", "48": "46695-2026111200.edt.txt", "72": "46695-2026111300.edt.txt", "96": "46695-2026111400.edt.txt", "120": "46695-2026111500.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026111000.edt.txt", "24": "47918-2026111100.edt.txt", "48": "47918-2026111200.edt.txt", "72": "47918-2026111300.edt.txt", "96": "47918-2026111400.edt.txt", "120": "47918-2026111500.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026111000.edt.txt", "24": "SETW-2026111100.edt.txt", "48": "SETW-2026111200.edt.txt", "72": "SETW-2026111300.edt.txt", "96": "SETW-2026111400.edt.txt", "120": "SETW-2026111500.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026111000.edt.txt", "24": "SWTW-2026111100.edt.txt", "48": "SWTW-2026111200.edt.txt", "72": "SWTW-2026111300.edt.txt", "96": "SWTW-2026111400.edt.txt", "120": "SWTW-2026111500.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026111000.zip"}, "compare": [{"init": "2026110900", "lead": 24}, {"init": "2026110800", "lead": 48}, {"init": "2026110700", "lead": 72}, {"init": "2026110600", "lead": 96}, {"init": "2026110500", "lead": 120}], "lite": true}, {"init": "2026110900", "steps": [], "sounding": {"init": "2026110900", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026110900.edt.txt", "24": "46692-2026111000.edt.txt", "48": "46692-2026111100.edt.txt", "72": "46692-2026111200.edt.txt", "96": "46692-2026111300.edt.txt", "120": "46692-2026111400.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026110900.edt.txt", "24": "46695-2026111000.edt.txt", "48": "46695-2026111100.edt.txt", "72": "46695-2026111200.edt.txt", "96": "46695-2026111300.edt.txt", "120": "46695-2026111400.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026110900.edt.txt", "24": "47918-2026111000.edt.txt", "48": "47918-2026111100.edt.txt", "72": "47918-2026111200.edt.txt", "96": "47918-2026111300.edt.txt", "120": "47918-2026111400.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026110900.edt.txt", "24": "SETW-2026111000.edt.txt", "48": "SETW-2026111100.edt.txt", "72": "SETW-2026111200.edt.txt", "96": "SETW-2026111300.edt.txt", "120": "SETW-2026111400.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026110900.edt.txt", "24": "SWTW-2026111000.edt.txt", "48": "SWTW-2026111100.edt.txt", "72": "SWTW-2026111200.edt.txt", "96": "SWTW-2026111300.edt.txt", "120": "SWTW-2026111400.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026110900.zip"}, "compare": [{"init": "2026110800", "lead": 24}, {"init": "2026110700", "lead": 48}, {"init": "2026110600", "lead": 72}, {"init": "2026110500", "lead": 96}, {"init": "2026110400", "lead": 120}], "lite": true}, {"init": "2026110800", "steps": [], "sounding": {"init": "2026110800", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026110800.edt.txt", "24": "46692-2026110900.edt.txt", "48": "46692-2026111000.edt.txt", "72": "46692-2026111100.edt.txt", "96": "46692-2026111200.edt.txt", "120": "46692-2026111300.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026110800.edt.txt", "24": "46695-2026110900.edt.txt", "48": "46695-2026111000.edt.txt", "72": "46695-2026111100.edt.txt", "96": "46695-2026111200.edt.txt", "120": "46695-2026111300.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026110800.edt.txt", "24": "47918-2026110900.edt.txt", "48": "47918-2026111000.edt.txt", "72": "47918-2026111100.edt.txt", "96": "47918-2026111200.edt.txt", "120": "47918-2026111300.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026110800.edt.txt", "24": "SETW-2026110900.edt.txt", "48": "SETW-2026111000.edt.txt", "72": "SETW-2026111100.edt.txt", "96": "SETW-2026111200.edt.txt", "120": "SETW-2026111300.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026110800.edt.txt", "24": "SWTW-2026110900.edt.txt", "48": "SWTW-2026111000.edt.txt", "72": "SWTW-2026111100.edt.txt", "96": "SWTW-2026111200.edt.txt", "120": "SWTW-2026111300.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026110800.zip"}, "compare": [{"init": "2026110700", "lead": 24}, {"init": "2026110600", "lead": 48}, {"init": "2026110500", "lead": 72}, {"init": "2026110400", "lead": 96}, {"init": "2026110300", "lead": 120}], "lite": true}, {"init": "2026110700", "steps": [], "sounding": {"init": "2026110700", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026110700.edt.txt", "24": "46692-2026110800.edt.txt", "48": "46692-2026110900.edt.txt", "72": "46692-2026111000.edt.txt", "96": "46692-2026111100.edt.txt", "120": "46692-2026111200.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026110700.edt.txt", "24": "46695-2026110800.edt.txt", "48": "46695-2026110900.edt.txt", "72": "46695-2026111000.edt.txt", "96": "46695-2026111100.edt.txt", "120": "46695-2026111200.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026110700.edt.txt", "24": "47918-2026110800.edt.txt", "48": "47918-2026110900.edt.txt", "72": "47918-2026111000.edt.txt", "96": "47918-2026111100.edt.txt", "120": "47918-2026111200.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026110700.edt.txt", "24": "SETW-2026110800.edt.txt", "48": "SETW-2026110900.edt.txt", "72": "SETW-2026111000.edt.txt", "96": "SETW-2026111100.edt.txt", "120": "SETW-2026111200.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026110700.edt.txt", "24": "SWTW-2026110800.edt.txt", "48": "SWTW-2026110900.edt.txt", "72": "SWTW-2026111000.edt.txt", "96": "SWTW-2026111100.edt.txt", "120": "SWTW-2026111200.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026110700.zip"}, "compare": [{"init": "2026110600", "lead": 24}, {"init": "2026110500", "lead": 48}, {"init": "2026110400", "lead": 72}, {"init": "2026110300", "lead": 96}, {"init": "2026110200", "lead": 120}], "lite": true}, {"init": "2026110600", "steps": [], "sounding": {"init": "2026110600", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026110600.edt.txt", "24": "46692-2026110700.edt.txt", "48": "46692-2026110800.edt.txt", "72": "46692-2026110900.edt.txt", "96": "46692-2026111000.edt.txt", "120": "46692-2026111100.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026110600.edt.txt", "24": "46695-2026110700.edt.txt", "48": "46695-2026110800.edt.txt", "72": "46695-2026110900.edt.txt", "96": "46695-2026111000.edt.txt", "120": "46695-2026111100.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026110600.edt.txt", "24": "47918-2026110700.edt.txt", "48": "47918-2026110800.edt.txt", "72": "47918-2026110900.edt.txt", "96": "47918-2026111000.edt.txt", "120": "47918-2026111100.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026110600.edt.txt", "24": "SETW-2026110700.edt.txt", "48": "SETW-2026110800.edt.txt", "72": "SETW-2026110900.edt.txt", "96": "SETW-2026111000.edt.txt", "120": "SETW-2026111100.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026110600.edt.txt", "24": "SWTW-2026110700.edt.txt", "48": "SWTW-2026110800.edt.txt", "72": "SWTW-2026110900.edt.txt", "96": "SWTW-2026111000.edt.txt", "120": "SWTW-2026111100.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026110600.zip"}, "compare": [{"init": "2026110500", "lead": 24}, {"init": "2026110400", "lead": 48}, {"init": "2026110300", "lead": 72}, {"init": "2026110200", "lead": 96}, {"init": "2026110100", "lead": 120}], "lite": true}, {"init": "2026110500", "steps": [], "sounding": {"init": "2026110500", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026110500.edt.txt", "24": "46692-2026110600.edt.txt", "48": "46692-2026110700.edt.txt", "72": "46692-2026110800.edt.txt", "96": "46692-2026110900.edt.txt", "120": "46692-2026111000.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026110500.edt.txt", "24": "46695-2026110600.edt.txt", "48": "46695-2026110700.edt.txt", "72": "46695-2026110800.edt.txt", "96": "46695-2026110900.edt.txt", "120": "46695-2026111000.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026110500.edt.txt", "24": "47918-2026110600.edt.txt", "48": "47918-2026110700.edt.txt", "72": "47918-2026110800.edt.txt", "96": "47918-2026110900.edt.txt", "120": "47918-2026111000.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026110500.edt.txt", "24": "SETW-2026110600.edt.txt", "48": "SETW-2026110700.edt.txt", "72": "SETW-2026110800.edt.txt", "96": "SETW-2026110900.edt.txt", "120": "SETW-2026111000.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026110500.edt.txt", "24": "SWTW-2026110600.edt.txt", "48": "SWTW-2026110700.edt.txt", "72": "SWTW-2026110800.edt.txt", "96": "SWTW-2026110900.edt.txt", "120": "SWTW-2026111000.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026110500.zip"}, "compare": [{"init": "2026110400", "lead": 24}, {"init": "2026110300", "lead": 48}, {"init": "2026110200", "lead": 72}, {"init": "2026110100", "lead": 96}, {"init": "2026103100", "lead": 120}], "lite": true}, {"init": "2026110400", "steps": [], "sounding": {"init": "2026110400", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026110400.edt.txt", "24": "46692-2026110500.edt.txt", "48": "46692-2026110600.edt.txt", "72": "46692-2026110700.edt.txt", "96": "46692-2026110800.edt.txt", "120": "46692-2026110900.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026110400.edt.txt", "24": "46695-2026110500.edt.txt", "48": "46695-2026110600.edt.txt", "72": "46695-2026110700.edt.txt", "96": "46695-2026110800.edt.txt", "120": "46695-2026110900.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026110400.edt.txt", "24": "47918-2026110500.edt.txt", "48": "47918-2026110600.edt.txt", "72": "47918-2026110700.edt.txt", "96": "47918-2026110800.edt.txt", "120": "47918-2026110900.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026110400.edt.txt", "24": "SETW-2026110500.edt.txt", "48": "SETW-2026110600.edt.txt", "72": "SETW-2026110700.edt.txt", "96": "SETW-2026110800.edt.txt", "120": "SETW-2026110900.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026110400.edt.txt", "24": "SWTW-2026110500.edt.txt", "48": "SWTW-2026110600.edt.txt", "72": "SWTW-2026110700.edt.txt", "96": "SWTW-2026110800.edt.txt", "120": "SWTW-2026110900.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026110400.zip"}, "compare": [{"init": "2026110300", "lead": 24}, {"init": "2026110200", "lead": 48}, {"init": "2026110100", "lead": 72}, {"init": "2026103100", "lead": 96}, {"init": "2026103000", "lead": 120}], "lite": true}, {"init": "2026110300", "steps": [], "sounding": {"init": "2026110300", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026110300.edt.txt", "24": "46692-2026110400.edt.txt", "48": "46692-2026110500.edt.txt", "72": "46692-2026110600.edt.txt", "96": "46692-2026110700.edt.txt", "120": "46692-2026110800.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026110300.edt.txt", "24": "46695-2026110400.edt.txt", "48": "46695-2026110500.edt.txt", "72": "46695-2026110600.edt.txt", "96": "46695-2026110700.edt.txt", "120": "46695-2026110800.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026110300.edt.txt", "24": "47918-2026110400.edt.txt", "48": "47918-2026110500.edt.txt", "72": "47918-2026110600.edt.txt", "96": "47918-2026110700.edt.txt", "120": "47918-2026110800.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026110300.edt.txt", "24": "SETW-2026110400.edt.txt", "48": "SETW-2026110500.edt.txt", "72": "SETW-2026110600.edt.txt", "96": "SETW-2026110700.edt.txt", "120": "SETW-2026110800.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026110300.edt.txt", "24": "SWTW-2026110400.edt.txt", "48": "SWTW-2026110500.edt.txt", "72": "SWTW-2026110600.edt.txt", "96": "SWTW-2026110700.edt.txt", "120": "SWTW-2026110800.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026110300.zip"}, "compare": [{"init": "2026110200", "lead": 24}, {"init": "2026110100", "lead": 48}, {"init": "2026103100", "lead": 72}, {"init": "2026103000", "lead": 96}, {"init": "2026102900", "lead": 120}], "lite": true}, {"init": "2026110200", "steps": [], "sounding": {"init": "2026110200", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026110200.edt.txt", "24": "46692-2026110300.edt.txt", "48": "46692-2026110400.edt.txt", "72": "46692-2026110500.edt.txt", "96": "46692-2026110600.edt.txt", "120": "46692-2026110700.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026110200.edt.txt", "24": "46695-2026110300.edt.txt", "48": "46695-2026110400.edt.txt", "72": "46695-2026110500.edt.txt", "96": "46695-2026110600.edt.txt", "120": "46695-2026110700.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026110200.edt.txt", "24": "47918-2026110300.edt.txt", "48": "47918-2026110400.edt.txt", "72": "47918-2026110500.edt.txt", "96": "47918-2026110600.edt.txt", "120": "47918-2026110700.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026110200.edt.txt", "24": "SETW-2026110300.edt.txt", "48": "SETW-2026110400.edt.txt", "72": "SETW-2026110500.edt.txt", "96": "SETW-2026110600.edt.txt", "120": "SETW-2026110700.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026110200.edt.txt", "24": "SWTW-2026110300.edt.txt", "48": "SWTW-2026110400.edt.txt", "72": "SWTW-2026110500.edt.txt", "96": "SWTW-2026110600.edt.txt", "120": "SWTW-2026110700.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026110200.zip"}, "compare": [{"init": "2026110100", "lead": 24}, {"init": "2026103100", "lead": 48}, {"init": "2026103000", "lead": 72}, {"init": "2026102900", "lead": 96}, {"init": "2026102800", "lead": 120}], "lite": true}, {"init": "2026110100", "steps": [], "sounding": {"init": "2026110100", "steps": [0, 24, 48, 72, 96, 120], "sites": [{"id": "banqiao", "name": "新北氣象站 (46692)", "lat": 24.96, "lon": 121.53, "txt": {"0": "46692-2026110100.edt.txt", "24": "46692-2026110200.edt.txt", "48": "46692-2026110300.edt.txt", "72": "46692-2026110400.edt.txt", "96": "46692-2026110500.edt.txt", "120": "46692-2026110600.edt.txt"}}, {"id": "pengjia", "name": "彭佳嶼氣象站 (46695)", "lat": 25.628, "lon": 122.08, "txt": {"0": "46695-2026110100.edt.txt", "24": "46695-2026110200.edt.txt", "48": "46695-2026110300.edt.txt", "72": "46695-2026110400.edt.txt", "96": "46695-2026110500.edt.txt", "120": "46695-2026110600.edt.txt"}}, {"id": "ishigaki", "name": "石垣島氣象站 (47918)", "lat": 24.337, "lon": 124.164, "txt": {"0": "47918-2026110100.edt.txt", "24": "47918-2026110200.edt.txt", "48": "47918-2026110300.edt.txt", "72": "47918-2026110400.edt.txt", "96": "47918-2026110500.edt.txt", "120": "47918-2026110600.edt.txt"}}, {"id": "setw", "name": "SETW (21.5°N, 123.25°E)", "lat": 21.5, "lon": 123.25, "txt": {"0": "SETW-2026110100.edt.txt", "24": "SETW-2026110200.edt.txt", "48": "SETW-2026110300.edt.txt", "72": "SETW-2026110400.edt.txt", "96": "SETW-2026110500.edt.txt", "120": "SETW-2026110600.edt.txt"}}, {"id": "swtw", "name": "SWTW (21.5°N, 118.5°E)", "lat": 21.5, "lon": 118.5, "txt": {"0": "SWTW-2026110100.edt.txt", "24": "SWTW-2026110200.edt.txt", "48": "SWTW-2026110300.edt.txt", "72": "SWTW-2026110400.edt.txt", "96": "SWTW-2026110500.edt.txt", "120": "SWTW-2026110600.edt.txt"}}], "zip": "ECMWF_IFS_sounding_2026110100.zip"}, "compare": [{"init": "2026103100", "lead": 24}, {"init": "2026103000", "lead": 48}, {"init": "2026102900", "lead": 72}, {"init": "2026102800", "lead": 96}, {"init": "2026102700", "lead": 120}], "lite": true}]} || { runs: [] };
+  var RUNS = M.runs || [];
+  var WK = ["日", "一", "二", "三", "四", "五", "六"];
+  var PRODUCTS = { mslp: "海平面氣壓 + 10 m 風", "850": "850 hPa 高度 + 風" };
+  var $ = function (id) { return document.getElementById(id); };
+  function pad(n) { return (n < 10 ? "0" : "") + n; }
+  function f3(h) { return ("00" + h).slice(-3); }
+
+  var R = null, steps = [], initMs = 0;
+  function tpeParts(h) {
+    var t = new Date(initMs + (h + 8) * 3600e3); // UTC+8
+    return { m: t.getUTCMonth() + 1, d: t.getUTCDate(), w: WK[t.getUTCDay()], h: t.getUTCHours() };
+  }
+  function utcLabel(h) {
+    var t = new Date(initMs + h * 3600e3);
+    return pad(t.getUTCMonth() + 1) + "/" + pad(t.getUTCDate()) + " " + pad(t.getUTCHours()) + "Z";
+  }
+  function runMs(r) {
+    return Date.UTC(+r.init.slice(0, 4), +r.init.slice(4, 6) - 1, +r.init.slice(6, 8), +r.init.slice(8, 10));
+  }
+  function base() { return "runs/" + R.init + "/img/"; }
+
+  var wind = "barb", view = "mslp";
+  try { wind = localStorage.getItem("fc-wind") === "stream" ? "stream" : "barb"; } catch (e) {}
+  try { view = localStorage.getItem("fc-view") || "mslp"; } catch (e) {}
+  if (view !== "mslp" && view !== "850" && view !== "both") view = "mslp";
+  function src(p, h, w) { return base() + p + ((w || wind) === "stream" ? "_s" : "") + "/f" + f3(h) + ".webp"; }
+
+  var slider = $("slider"), sheets = $("sheets");
+  var idx = 0, timer = null, imgs = [], cache = [], loadToken = 0;
+
+  // ---- 初始時間選單 ----
+  RUNS.forEach(function (r, i) {
+    var t = new Date(runMs(r)), o = document.createElement("option");
+    o.value = r.init;
+    o.textContent = t.getUTCFullYear() + "-" + pad(t.getUTCMonth() + 1) + "-" + pad(t.getUTCDate()) + " " +
+      pad(t.getUTCHours()) + "Z" + (i === 0 ? "（最新）" : "") + (r.lite ? "（僅比較與探空）" : "");
+    $("run").appendChild(o);
+  });
+
+  function preload() {
+    var token = ++loadToken, list = [], loaded = 0;
+    cache = [];
+    [wind, wind === "barb" ? "stream" : "barb"].forEach(function (w) {
+      Object.keys(PRODUCTS).forEach(function (p) { steps.forEach(function (h) { list.push(src(p, h, w)); }); });
+    });
+    var S = R.sounding;
+    if (S) S.sites.forEach(function (s) { S.steps.forEach(function (h) { list.push(base() + "sounding/" + s.id + "_f" + f3(h) + ".webp"); }); });
+    list.forEach(function (u) {
+      var im = new Image();
+      im.onload = im.onerror = function () {
+        if (token !== loadToken) return;
+        loaded++;
+        $("loading").textContent = loaded < list.length ? "載入圖片中… " + loaded + " / " + list.length : "已載入 " + list.length + " 張";
+      };
+      im.src = u; cache.push(im);
+    });
+  }
+
+  function buildTicks() {
+    $("ticks").innerHTML = "";
+    steps.forEach(function (h, i) {
+      if (h % 24 !== 0) return;
+      var t = tpeParts(h), b = document.createElement("button");
+      b.type = "button"; b.className = "tick";
+      b.style.left = (steps.length > 1 ? i / (steps.length - 1) * 100 : 0) + "%";
+      b.innerHTML = "<b>+" + h + "h</b><span>" + t.m + "/" + t.d + " " + pad(t.h) + "時</span>";
+      b.addEventListener("click", function () { stop(); go(i); });
+      $("ticks").appendChild(b);
+    });
+  }
+
+  function buildSheets() {
+    sheets.innerHTML = ""; imgs = [];
+    var list = view === "both" ? ["mslp", "850"] : [view];
+    sheets.className = "sheets" + (list.length === 2 ? " two" : "");
+    list.forEach(function (p) {
+      var div = document.createElement("div"), im = document.createElement("img");
+      div.className = "sheet"; im.alt = PRODUCTS[p] + " 預報圖"; im.dataset.p = p;
+      div.appendChild(im); sheets.appendChild(div); imgs.push(im);
+    });
+    document.querySelectorAll("[data-view]").forEach(function (b) {
+      b.setAttribute("aria-pressed", String(b.dataset.view === view));
+    });
+    document.querySelectorAll("[data-wind]").forEach(function (b) {
+      b.setAttribute("aria-pressed", String(b.dataset.wind === wind));
+    });
+  }
+  function render() {
+    var h = steps[idx]; if (h === undefined) return;
+    imgs.forEach(function (im) { im.src = src(im.dataset.p, h); });
+    var t = tpeParts(h);
+    $("lead").textContent = "+" + h + " h";
+    $("tpe").textContent = "台北 " + t.m + "/" + t.d + "（" + t.w + "）" + pad(t.h) + ":00";
+    $("utc").textContent = "UTC " + utcLabel(h);
+    slider.value = idx;
+  }
+  function go(i) { if (!steps.length) return; idx = (i + steps.length) % steps.length; render(); }
+  function setView(v) { view = v; try { localStorage.setItem("fc-view", v); } catch (e) {} buildSheets(); render(); }
+  function setWind(w) { wind = w; try { localStorage.setItem("fc-wind", w); } catch (e) {} buildSheets(); render(); buildCompare(); }
+
+  // ---- 探空 ----
+  var sSite = $("snd-site"), sTime = $("snd-time");
+  function buildSounding() {
+    var S = R.sounding;
+    $("sounding").hidden = !(S && S.sites && S.sites.length);
+    if ($("sounding").hidden) return;
+    var keepSite = sSite.value, keepH = sTime.value;
+    try { if (!keepSite) keepSite = localStorage.getItem("snd-site"); } catch (e) {}
+    sSite.innerHTML = ""; sTime.innerHTML = "";
+    S.sites.forEach(function (s) {
+      var o = document.createElement("option"); o.value = s.id; o.textContent = s.name; sSite.appendChild(o);
+    });
+    S.steps.forEach(function (h) {
+      var t = tpeParts(h), o = document.createElement("option");
+      o.value = h;
+      o.textContent = t.m + "/" + t.d + "（" + t.w + "）" + pad(t.h) + " 時" + (h === 0 ? " · 初始場" : " · +" + h + " h");
+      sTime.appendChild(o);
+    });
+    if (keepSite && S.sites.some(function (s) { return s.id === keepSite; })) sSite.value = keepSite;
+    if (keepH !== "" && S.steps.indexOf(+keepH) >= 0) sTime.value = keepH;
+    showSnd();
+  }
+  function showSnd() {
+    var S = R.sounding; if (!S) return;
+    var h = +sTime.value, s = S.sites.filter(function (x) { return x.id === sSite.value; })[0];
+    $("snd-img").src = base() + "sounding/" + s.id + "_f" + f3(h) + ".webp";
+    $("snd-img").alt = s.name + " 預報探空圖 +" + h + " h";
+    $("snd-info").textContent = s.lat.toFixed(2) + "°N, " + s.lon.toFixed(2) + "°E · UTC " + utcLabel(h);
+    try { localStorage.setItem("snd-site", s.id); } catch (e) {}
+    updateDl();
+  }
+  sSite.addEventListener("change", showSnd);
+  sTime.addEventListener("change", showSnd);
+
+  // ---- 探空文字檔下載 ----
+  // 在 Claude 上用 downloads 能力 (會先請檢視者確認)；本機/一般網站則用一般下載連結
+  var dlApi; // undefined = 尚未確認, null = 不可用
+  function getDl() {
+    if (dlApi !== undefined) return Promise.resolve(dlApi);
+    if (!window.claude || typeof window.claude.use !== "function") { dlApi = null; return Promise.resolve(null); }
+    return window.claude.use("downloads").then(function (d) { dlApi = d || null; return dlApi; },
+                                                function () { dlApi = null; return null; });
+  }
+  function curTxt() {
+    var S = R && R.sounding; if (!S) return null;
+    var s = S.sites.filter(function (x) { return x.id === sSite.value; })[0];
+    return s && s.txt ? s.txt[String(+sTime.value)] : null;
+  }
+  function updateDl() {
+    var S = R && R.sounding, name = curTxt();
+    $("snd-dl").hidden = !(S && name);
+    $("dl-all").hidden = !(S && S.zip);
+    $("dl-name").textContent = name || "";
+    $("dl-msg").textContent = "";
+  }
+  function saveFile(path, filename, btn, binary) {
+    var msg = $("dl-msg");
+    btn.disabled = true; msg.textContent = "準備檔案…";
+    getDl().then(function (dl) {
+      if (!dl) { // 一般下載連結
+        var a = document.createElement("a");
+        a.href = path; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+        msg.textContent = ""; return;
+      }
+      return fetch(path).then(function (r) {
+        if (!r.ok) throw { code: "fetch" };
+        return binary ? r.blob() : r.text();
+      }).then(function (data) {
+        return dl.save({ filename: filename, data: data });
+      }).then(function () { msg.textContent = "已下載 " + filename; });
+    }).catch(function (e) {
+      var c = e && e.code;
+      msg.textContent = c === "declined" ? "已取消下載" :
+        c === "rate_limited" ? "已有下載視窗開著，請稍後再試" :
+        c === "fetch" ? "找不到檔案，請重新整理後再試" : "這個檢視畫面無法下載檔案";
+    }).then(function () { btn.disabled = false; });
+  }
+  $("dl-one").addEventListener("click", function () {
+    var name = curTxt(); if (!name) return;
+    saveFile(base().replace(/img\/$/, "") + "txt/" + name, name, $("dl-one"), false);
+  });
+  $("dl-all").addEventListener("click", function () {
+    var S = R && R.sounding; if (!S || !S.zip) return;
+    var btn = $("dl-all"), msg = $("dl-msg"), dir = base().replace(/img\/$/, "") + "txt/";
+    getDl().then(function (dl) {
+      // 本機 / 一般網站：直接下載預先打包好的 zip
+      if (!dl || typeof JSZip === "undefined") return saveFile(dir + S.zip, S.zip, btn, true);
+      // Claude 上：在瀏覽器端把本報所有文字檔打包成 zip 再存檔
+      btn.disabled = true; msg.textContent = "打包中…";
+      var names = [];
+      S.sites.forEach(function (s) { Object.keys(s.txt || {}).forEach(function (h) { names.push(s.txt[h]); }); });
+      var zip = new JSZip();
+      return Promise.all(names.map(function (n) {
+        return fetch(dir + n).then(function (r) { if (!r.ok) throw { code: "fetch" }; return r.text(); })
+          .then(function (t) { zip.file(n, t); });
+      })).then(function () {
+        return zip.generateAsync({ type: "blob", compression: "DEFLATE" });
+      }).then(function (blob) {
+        return dl.save({ filename: S.zip, data: blob });
+      }).then(function () { msg.textContent = "已下載 " + S.zip; }, function (e) {
+        var c = e && e.code;
+        msg.textContent = c === "declined" ? "已取消下載" :
+          c === "rate_limited" ? "已有下載視窗開著，請稍後再試" :
+          c === "fetch" ? "找不到檔案，請重新整理後再試" : "這個檢視畫面無法下載檔案";
+      }).then(function () { btn.disabled = false; });
+    });
+  });
+
+  // ---- 逐 run 比較 ----
+  var cmpProd = "mslp";
+  try { cmpProd = localStorage.getItem("cmp-prod") === "850" ? "850" : "mslp"; } catch (e) {}
+  function cmpKey() { return cmpProd + (wind === "stream" ? "_s" : ""); }
+  function cmpItems() {
+    var C = (R && R.compare) || [];
+    var items = [{ ana: true, init: R.init, lead: 0, src: base() + cmpKey() + "/f000.webp" }];
+    C.forEach(function (c) {
+      items.push({ init: c.init, lead: c.lead,
+        src: "runs/" + R.init + "/cmp/" + cmpKey() + "/" + c.init + "_f" + f3(c.lead) + ".webp" });
+    });
+    return items;
+  }
+  function runLabel(init) {
+    return init.slice(4, 6) + "/" + init.slice(6, 8) + " " + init.slice(8, 10) + "Z";
+  }
+  function buildCompare() {
+    var C = R && R.compare;
+    $("compare").hidden = !(C && C.length);
+    if ($("compare").hidden) return;
+    document.querySelectorAll("[data-cmp]").forEach(function (b) {
+      b.setAttribute("aria-pressed", String(b.dataset.cmp === cmpProd));
+    });
+    var t = tpeParts(0);
+    $("cmp-valid").textContent = "有效時間 台北 " + t.m + "/" + t.d + "（" + t.w + "）" + pad(t.h) + ":00";
+    $("cmp-utc").textContent = "UTC " + utcLabel(0);
+    var grid = $("cgrid"); grid.innerHTML = "";
+    cmpItems().forEach(function (it) {
+      var fig = document.createElement("figure"), cap = document.createElement("figcaption"),
+          tag = document.createElement("span"), lbl = document.createElement("span"),
+          btn = document.createElement("button"), img = document.createElement("img");
+      fig.className = "ccard" + (it.ana ? " ana" : "");
+      tag.className = "lead-tag"; tag.textContent = it.ana ? "分析場" : "前 " + it.lead + " h";
+      lbl.className = "run-lbl"; lbl.textContent = runLabel(it.init) + " 起報 +" + it.lead + "h";
+      cap.appendChild(tag); cap.appendChild(lbl);
+      btn.type = "button"; btn.setAttribute("aria-label", "放大 " + tag.textContent + " " + lbl.textContent);
+      img.src = it.src; img.alt = (cmpProd === "850" ? "850 hPa" : "海平面氣壓") + " " + lbl.textContent;
+      img.loading = "lazy";
+      btn.appendChild(img);
+      btn.addEventListener("click", function () {
+        $("lb-img").src = it.src; $("lb-img").alt = img.alt; $("lightbox").hidden = false; $("lb-close").focus();
+      });
+      fig.appendChild(cap); fig.appendChild(btn); grid.appendChild(fig);
+    });
+  }
+  document.querySelectorAll("[data-cmp]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      cmpProd = b.dataset.cmp; try { localStorage.setItem("cmp-prod", cmpProd); } catch (e) {}
+      buildCompare();
+    });
+  });
+  function closeLb() { $("lightbox").hidden = true; $("lb-img").removeAttribute("src"); }
+  $("lightbox").addEventListener("click", closeLb);
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !$("lightbox").hidden) closeLb(); });
+
+  // ---- 切換初始時間 ----
+  function setRun(init) {
+    var r = RUNS.filter(function (x) { return x.init === init; })[0] || RUNS[0];
+    if (!r) return;
+    var keepH = R ? steps[idx] : 0;
+    R = r; steps = r.steps; initMs = runMs(r);
+    $("run").value = r.init;
+    $("anim").hidden = !!r.lite;
+    var t = new Date(initMs);
+    $("meta").textContent = "ECMWF IFS 0.1° · 0–" + (steps[steps.length - 1] || 0) + " h · 21–26°N, 118–125°E";
+    slider.max = Math.max(0, steps.length - 1);
+    idx = Math.max(0, steps.indexOf(keepH));
+    buildTicks(); buildSheets(); render(); buildCompare(); buildSounding(); preload();
+    if (location.hash !== "#run-" + r.init) {
+      try { history.replaceState(null, "", "#run-" + r.init); } catch (e) {}
+    }
+  }
+  $("run").addEventListener("change", function () { setRun($("run").value); });
+
+  // ---- 播放 ----
+  var PLAY = '<path d="M4 2l10 6-10 6z"/>', PAUSE = '<path d="M3 2h4v12H3zM9 2h4v12H9z"/>';
+  function tick() {
+    go(idx + 1);
+    var delay = +$("speed").value;
+    timer = setTimeout(tick, idx === steps.length - 1 ? Math.max(1200, delay * 2) : delay);
+  }
+  function play() {
+    if (timer || steps.length < 2) return;
+    $("play-ico").innerHTML = PAUSE; $("play").setAttribute("aria-label", "暫停");
+    timer = setTimeout(tick, +$("speed").value);
+  }
+  function stop() {
+    clearTimeout(timer); timer = null;
+    $("play-ico").innerHTML = PLAY; $("play").setAttribute("aria-label", "播放");
+  }
+  $("play").addEventListener("click", function () { timer ? stop() : play(); });
+  $("prev").addEventListener("click", function () { stop(); go(idx - 1); });
+  $("next").addEventListener("click", function () { stop(); go(idx + 1); });
+  slider.addEventListener("input", function () { stop(); go(+slider.value); });
+  $("speed").addEventListener("change", function () { if (timer) { stop(); play(); } });
+  document.querySelectorAll("[data-view]").forEach(function (b) {
+    b.addEventListener("click", function () { setView(b.dataset.view); });
+  });
+  document.querySelectorAll("[data-wind]").forEach(function (b) {
+    b.addEventListener("click", function () { setWind(b.dataset.wind); });
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.target.tagName === "SELECT" || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key === " ") { e.preventDefault(); timer ? stop() : play(); }
+    else if (e.key === "ArrowLeft") { e.preventDefault(); stop(); go(idx - 1); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); stop(); go(idx + 1); }
+    else if (e.key === "1") setView("mslp");
+    else if (e.key === "2") setView("850");
+    else if (e.key === "3") setView("both");
+    else if (e.key === "w" || e.key === "W") setWind(wind === "barb" ? "stream" : "barb");
+  });
+
+  // 網址 #run-2026111300 可直接開到指定初始時間
+  var fromHash = (location.hash.match(/^#run-(\d{10})$/) || [])[1];
+  setRun(fromHash || (RUNS[0] && RUNS[0].init));
+  window.addEventListener("hashchange", function () {
+    var h = (location.hash.match(/^#run-(\d{10})$/) || [])[1];
+    if (h && (!R || h !== R.init)) setRun(h);
+  });
+  var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!reduce) play();
+})();
+</script>
+
+</body>
+</html>
